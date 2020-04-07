@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdbool.h>
 #include <math.h>
 
 // ----------------------------------------------------------------------------
@@ -17,15 +18,71 @@ typedef struct vec3 {
     };
 } vec3;
 
-vec3 normalize(const vec3 v) {
-    double len = sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+void vec_set(vec3 *vec, double x, double y, double z) {
+    vec->x = x;
+    vec->y = y;
+    vec->z = z;
+}
+
+double vec_length(const vec3 v) {
+    return sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
+}
+
+vec3 vec_unit(const vec3 v) {
+    double len = vec_length(v);
     vec3 unit = {
-            .x = v.x / len,
-            .y = v.y / len,
-            .z = v.z / len
+            v.x / len,
+            v.y / len,
+            v.z / len
     };
     return unit;
 }
+
+double vec_normalize(vec3 *v) {
+    double len = vec_length(*v);
+    if (len == 0.0) {
+        vec_set(v, v->x / len, v->y / len, v->z / len);
+    }
+    return len;
+}
+
+void vec_inverse(vec3 *v) {
+    v->x *= -1.0;
+    v->y *= -1.0;
+    v->z *= -1.0;
+}
+
+vec3 vec_subtract(const vec3 v1, const vec3 v2) {
+    vec3 result = {
+            v1.x - v2.x,
+            v1.y - v2.y,
+            v1.z - v2.z
+    };
+    return result;
+}
+
+vec3 vec_add(const vec3 v1, const vec3 v2) {
+    vec3 result = {
+            v1.x + v2.x,
+            v1.y + v2.y,
+            v1.z + v2.z
+    };
+    return result;
+}
+
+vec3 vec_scale(const vec3 v, double s) {
+    vec3 result = {
+            s * v.x,
+            s * v.y,
+            s * v.z
+    };
+    return result;
+}
+
+double vec_dot(const vec3 v1, const vec3 v2) {
+    return sqrt(v1.x*v2.x + v1.y*v2.y + v1.z*v2.z);
+}
+
 
 // ----------------------------------------------------------------------------
 // ray
@@ -37,21 +94,35 @@ typedef struct ray {
 } ray;
 
 vec3 ray_at(const ray ray, double t) {
-    vec3 at = {
-            .x = ray.orig.x + t * ray.dir.x,
-            .y = ray.orig.y + t * ray.dir.y,
-            .z = ray.orig.z + t * ray.dir.z
-    };
+    vec3 at = vec_add(ray.orig, vec_scale(ray.dir, t));
     return at;
 }
 
+// ----------------------------------------------------------------------------
+// raytrace
+// ----------------------------------------------------------------------------
+
+bool hit_sphere(const vec3 center, double radius, const ray ray) {
+    vec3 oc = vec_subtract(center, ray.orig);
+    double a = vec_dot(ray.dir, ray.dir);
+    double b = 2.0 * vec_dot(oc, ray.dir);
+    double c = vec_dot(oc, oc) - radius*radius;
+    double discriminant = b*b - 4*a*c;
+    return (discriminant > 0.0);
+}
+
 vec3 ray_color(const ray ray) {
-    vec3 dir = normalize(ray.dir);
+    vec3 center = { 0, 0, -1 };
+    if (hit_sphere(center, 0.5, ray)) {
+        return (vec3) {1, 0, 0};
+    }
+
+    vec3 dir = vec_unit(ray.dir);
     double t = 0.5 * (dir.y + 1.0);
     vec3 color = {
-            .r = (1.0 - t) * 1.0 + t * 0.5,
-            .g = (1.0 - t) * 1.0 + t * 0.7,
-            .b = (1.0 - t) * 1.0 + t * 1.0
+            (1.0 - t) * 1.0 + t * 0.5,
+            (1.0 - t) * 1.0 + t * 0.7,
+            (1.0 - t) * 1.0 + t * 1.0
     };
     return color;
 }
@@ -79,26 +150,28 @@ int main() {
         return 1;
     }
 
-    const int image_width = 200;
-    const int image_height = 100;
+    const int image_width = 400;
+    const int image_height = 200;
 
     fprintf(file, "P3\n%d %d\n255\n", image_width, image_height);
 
-    vec3 lower_left_corner = { .x = -2.0, .y = -1.0, .z = -1.0 };
-    vec3 horizontal = { .x = 2.0, .y = 0.0, .z = 0.0 };
-    vec3 vertical = { .x = 0.0, .y = 2.0, .z = 0.0 };
-    vec3 origin = { .x = 0.0, .y = 0.0, .z = 0.0 };
+    vec3 lower_left_corner = { -2, -1, -1 };
+    vec3 horizontal        = {  4,  0,  0 };
+    vec3 vertical          = {  0,  2,  0 };
+    vec3 origin            = {  0,  0,  0 };
+
     for (int j = image_height - 1; j >= 0; --j) {
         printf("\rScanlines remaining: %d ", j);
+
         for (int i = 0; i < image_width; ++i) {
             double u = (double) i / image_width;
             double v = (double) j / image_height;
             ray ray = {
                     .orig = origin,
                     .dir = {
-                            .x = lower_left_corner.x + u * horizontal.x + v * vertical.x,
-                            .y = lower_left_corner.y + u * horizontal.y + v * vertical.y,
-                            .z = lower_left_corner.z + u * horizontal.z + v * vertical.z,
+                        lower_left_corner.x + u * horizontal.x + v * vertical.x,
+                        lower_left_corner.y + u * horizontal.y + v * vertical.y,
+                        lower_left_corner.z + u * horizontal.z + v * vertical.z,
                     }
             };
             vec3 color = ray_color(ray);
